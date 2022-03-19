@@ -39,6 +39,9 @@ def _list_premises(input_path: str) -> Dict[int, str]:
         if os.path.isdir(Path(input_path, premise)) and premise.startswith("Premises_")
     ]
     houses = {int(house.split("Premises_")[1]): house for house in houses}
+    # sort values by key
+    # see https://stackoverflow.com/a/47017849/12462703
+    houses =dict(sorted(houses.items()))
     return houses
 
 
@@ -48,6 +51,9 @@ def _load_data_location_one_building(metadata_yaml_path: str) -> Dict[int, str]:
     data_location = {
         key: value["data_location"] for (key, value) in data_location.items()
     }
+    # sort values by key
+    # see https://stackoverflow.com/a/47017849/12462703
+    data_location =dict(sorted(data_location.items()))
     return data_location
 
 
@@ -71,6 +77,9 @@ def _load_data_location(metadata_path: str) -> Dict[int, Dict[int, str]]:
         data_location[house_number] = _load_data_location_one_building(
             Path(metadata_path, house)
         )
+    # sort values by key
+    # see https://stackoverflow.com/a/47017849/12462703
+    data_location =dict(sorted(data_location.items()))
     return data_location
 
 
@@ -121,13 +130,10 @@ def _convert(
     # check correct data
     if set(premises_data_location.keys()) != set(data_location.keys()):
         print("The houses in mored_path do not match the houses in the metadata.")
-        mored_path_houses = list(premises_data_location.keys())
-        mored_path_houses.sort()
-        metadata_houses = list(data_location.keys())
-        metadata_houses.sort()
-        print("Houses in mored_path:\t", mored_path_houses)
-        print("Houses in metadata:\t", metadata_houses)
-        return
+        print("Houses in mored_path:\t", list(premises_data_location.keys()))
+        print("Houses in metadata:\t", list(data_location.keys()))
+        print("The conversion has not been done.")
+        exit()
     print(f"The houses found are: {list(premises_data_location.keys())}")
 
     for house_number, one_house_data_location in data_location.items():

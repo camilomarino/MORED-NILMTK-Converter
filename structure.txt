@@ -59,8 +59,17 @@ data
 │   ├── Refrigerator.csv
 │   ├── TV.csv
 │   └── Washing_machine.csv
-└── Premises_8
+├── Premises_8
+│   ├── Events.csv
+│   ├── Mains.csv
+│   ├── Refrigerator.csv
+│   └── TV.csv
+└── Premises_9
     ├── Events.csv
-    ├── Mains.csv
+    ├── GarageLights.csv
+    ├── Printer.csv
     ├── Refrigerator.csv
-    └── TV.csv
+    ├── TV.csv
+    └── WashingMachine.csv
+
+10 directories, 62 files
