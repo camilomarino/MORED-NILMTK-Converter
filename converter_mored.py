@@ -1,150 +1,176 @@
-import os
+"""Convert MORED whole-premises and individual-load ground-truth data."""
+
 import re
-import warnings
 from pathlib import Path
-from typing import Dict
+from shutil import copyfile
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import pandas as pd
 import yaml
 from nilm_metadata import save_yaml_to_datastore
+
 from nilmtk.datastore import Key
 from nilmtk.measurement import LEVEL_NAMES
 from nilmtk.utils import get_datastore
 
-warnings.simplefilter(action="ignore", category=FutureWarning)
+METADATA_PATH = Path(__file__).resolve().parent / "metadata"
+TIMEZONE = "Africa/Casablanca"
 
 
-def convert_mored(mored_path: str, output_filename: str) -> None:
-    """ """
+def convert_mored(mored_path, output_filename, format="HDF", *, source_timezone="UTC"):
+    """Convert downloaded MORED WPILGT premises to a NILMTK datastore.
 
-    store = get_datastore(output_filename, "HDF", mode="w")
+    Parameters
+    ----------
+    mored_path : str or pathlib.Path
+        Directory containing one or more complete ``Premises_<number>`` folders.
+    output_filename : str or pathlib.Path
+        Destination HDF5 file.
+    format : {'HDF'}, default 'HDF'
+        Output datastore format. Only HDF5 is supported.
+    source_timezone : str, default 'UTC'
+        Timezone of the naive source timestamps. UTC preserves the original
+        converter's interpretation; the published CSVs contain no UTC offset.
+        Set this explicitly if the export uses local wall time. Output timestamps
+        always use Africa/Casablanca. Ambiguous/nonexistent local times raise.
 
-    # Convert raw data to DataStore
-    _convert(mored_path, store)
-
-    metadata_path = "metadata"
-
-    # Add metadata
-    save_yaml_to_datastore(metadata_path, store)
-    store.close()
-
-    print("Done converting MORED to HDF5!")
-
-
-def _list_premises(input_path: str) -> Dict[int, str]:
-    houses = [
-        premise
-        for premise in os.listdir(input_path)
-        if os.path.isdir(Path(input_path, premise)) and premise.startswith("Premises_")
-    ]
-    houses = {int(house.split("Premises_")[1]): house for house in houses}
-    # sort values by key
-    # see https://stackoverflow.com/a/47017849/12462703
-    houses =dict(sorted(houses.items()))
-    return houses
-
-
-def _load_data_location_one_building(metadata_yaml_path: str) -> Dict[int, str]:
-    with open(metadata_yaml_path, "r") as fp:
-        data_location = yaml.load(fp, Loader=yaml.FullLoader)["elec_meters"]
-    data_location = {
-        key: value["data_location"] for (key, value) in data_location.items()
-    }
-    # sort values by key
-    # see https://stackoverflow.com/a/47017849/12462703
-    data_location =dict(sorted(data_location.items()))
-    return data_location
-
-
-def _load_data_location(metadata_path: str) -> Dict[int, Dict[int, str]]:
+    Notes
+    -----
+    Readings remain in volts and watts, without resampling or interpolation.
+    Duplicate timestamps keep the first valid reading in source-file order.
+    Premises 9 has appliance readings but no measured mains channel.
+    Each CSV is loaded separately. A failed conversion closes the datastore but
+    may leave a partial output, which must not be used as a complete dataset.
     """
-    Rerturn
-    -------
-    Diccionario de diccionarios. La primer key es ek numero de casa
-    y la segunda el numero de electrodomestico. El value es la ruta
-    del csv del electrodomestico
-    """
-    # load yaml
-    data_location = {}
-    houses = [
-        yaml
-        for yaml in os.listdir(metadata_path)
-        if yaml.endswith(".yaml") and yaml.startswith("building")
-    ]
-    for house in houses:
-        house_number = int(re.search("building(\d+)\.yaml$", house).group(1))
-        data_location[house_number] = _load_data_location_one_building(
-            Path(metadata_path, house)
-        )
-    # sort values by key
-    # see https://stackoverflow.com/a/47017849/12462703
-    data_location =dict(sorted(data_location.items()))
-    return data_location
+    input_path = Path(mored_path).expanduser()
+    premises = _list_premises(input_path)
+    locations = _load_data_location(METADATA_PATH)
+    unknown = set(premises) - set(locations)
+    if unknown:
+        raise ValueError(f"No MORED metadata for premises {sorted(unknown)}")
 
+    # Validate all sources before opening (and potentially replacing) output.
+    sources = []
+    output_path = Path(output_filename).expanduser()
+    for house in premises:
+        for meter, relative_path in locations[house].items():
+            relative_path = Path(relative_path)
+            if relative_path.parts != (premises[house], relative_path.name):
+                raise ValueError(
+                    f"Invalid data location for premises {house}: {relative_path}"
+                )
+            csv_path = input_path / relative_path
+            if not csv_path.is_file():
+                raise FileNotFoundError(f"Missing MORED meter file: {csv_path}")
+            if csv_path.resolve() == output_path.resolve():
+                raise ValueError("Output must not replace a source CSV")
+            sources.append((house, meter, csv_path))
+    pd.Timestamp("2020-01-01").tz_localize(source_timezone)
+    if format != "HDF":
+        raise ValueError("Only HDF output is supported for this dataset")
 
-def _read_meter_csv(
-    csv_path: str, sort_index: bool, drop_duplicates: bool
-) -> pd.DataFrame:
-    df = pd.read_csv(csv_path)
+    store = get_datastore(str(output_path), format, mode="w")
     try:
-        df["timestamp"] = pd.to_datetime(df["timestamp"], format="%d/%m/%Y %H:%M:%S")
-    except ValueError:
-        # some appliances have a different date format
-        # see Premises_10/TV.csv
-        print(
-            f"{csv_path} has a different timestamp format, trying pd.to_datetime with no arguments"
+        for house, meter, csv_path in sources:
+            print(f"Converting MORED premises {house}, meter {meter}: {csv_path.name}")
+            frame = _read_meter_csv(csv_path, source_timezone=source_timezone)
+            store.put(str(Key(building=house, meter=meter)), frame)
+        _save_metadata(store, premises, source_timezone)
+    finally:
+        store.close()
+    print(f"Done converting MORED to {format}!")
+
+
+def _list_premises(input_path):
+    if not input_path.is_dir():
+        raise FileNotFoundError(f"MORED directory does not exist: {input_path}")
+    premises = {}
+    for path in sorted(input_path.iterdir()):
+        match = re.fullmatch(r"Premises_([1-9][0-9]*)", path.name)
+        if path.is_dir() and match:
+            premises[int(match[1])] = path.name
+    if not premises:
+        raise ValueError(f"No Premises_<number> directories found in {input_path}")
+    return dict(sorted(premises.items()))
+
+
+def _load_data_location(metadata_path):
+    locations = {}
+    for path in Path(metadata_path).glob("building*.yaml"):
+        with path.open(encoding="utf-8") as handle:
+            building = yaml.safe_load(handle)
+        locations[building["instance"]] = {
+            meter: values["data_location"]
+            for meter, values in sorted(building["elec_meters"].items())
+        }
+    return dict(sorted(locations.items()))
+
+
+def _read_meter_csv(csv_path, *, source_timezone="UTC"):
+    frame = pd.read_csv(csv_path, usecols=["timestamp", "Vrms", "real_power"])
+    timestamps = frame.pop("timestamp")
+    parsed = pd.to_datetime(timestamps, format="%d/%m/%Y %H:%M:%S", errors="coerce")
+    # Premises_10/TV.csv uses English month names and fractional seconds.
+    for date_format in ("%d-%b-%Y %H:%M:%S.%f", "%d-%b-%Y %H:%M:%S"):
+        missing = parsed.isna() & timestamps.notna()
+        parsed.loc[missing] = pd.to_datetime(
+            timestamps.loc[missing], format=date_format, errors="coerce"
         )
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-    df.set_index("timestamp", inplace=True)
-    df.dropna(inplace=True)
-    df = df.astype(np.float32)
-    if drop_duplicates:
-        # https://stackoverflow.com/a/34297689/12462703
-        df = df[~df.index.duplicated(keep="first")]
-    if sort_index:
-        df.sort_index(inplace=True)
+    invalid = parsed.isna() & timestamps.notna()
+    if invalid.any():
+        raise ValueError(
+            f"Invalid MORED timestamp in {csv_path}: {timestamps[invalid].iloc[0]!r}"
+        )
 
-    df = df.tz_localize("GMT").tz_convert(
-        "Africa/Casablanca"
-    )  # Maybe you have to localize
-    # it in GMT and then convert it
-    columns = pd.MultiIndex.from_tuples(
-        [
-            ("voltage", ""),
-            ("power", "active"),
-        ]
+    # Select by name: source column order must not swap watts and volts.
+    frame = frame[["Vrms", "real_power"]].astype(np.float32)
+    frame.index = pd.DatetimeIndex(parsed, name="timestamp")
+    frame = frame.loc[frame.index.notna()]
+    frame = frame.replace([np.inf, -np.inf], np.nan).dropna(how="all")
+    frame = frame.loc[~frame.index.duplicated(keep="first")].sort_index()
+    if frame.empty:
+        raise ValueError(f"No valid MORED readings in {csv_path}")
+    frame.index = frame.index.tz_localize(source_timezone).tz_convert(TIMEZONE)
+    frame.columns = pd.MultiIndex.from_tuples(
+        [("voltage", ""), ("power", "active")], names=LEVEL_NAMES
     )
-    df.columns = columns
-    df.columns.set_names(LEVEL_NAMES, inplace=True)
-
-    return df
+    return frame
 
 
-def _convert(
-    mored_path: str, store, sort_index: bool = True, drop_duplicates: bool = False
-) -> None:
-    premises_data_location = _list_premises(mored_path)
-    data_location = _load_data_location("metadata")
+def _save_metadata(store, premises, source_timezone):
+    # The public helper loads every YAML file: stage only converted buildings.
+    with TemporaryDirectory(prefix="nilmtk-mored-") as directory:
+        target = Path(directory)
+        with (METADATA_PATH / "dataset.yaml").open(encoding="utf-8") as handle:
+            dataset = yaml.safe_load(handle)
+        dataset["number_of_buildings"] = len(premises)
+        dataset["description"] += (
+            f" The converter interpreted source CSV timestamps in {source_timezone}"
+            f" and represents them in {TIMEZONE}."
+        )
+        (target / "dataset.yaml").write_text(
+            yaml.safe_dump(dataset, sort_keys=False), encoding="utf-8"
+        )
+        copyfile(METADATA_PATH / "meter_devices.yaml", target / "meter_devices.yaml")
+        for house in premises:
+            name = f"building{house}.yaml"
+            copyfile(METADATA_PATH / name, target / name)
+        save_yaml_to_datastore(str(target), store)
 
-    # check correct data
-    if set(premises_data_location.keys()) != set(data_location.keys()):
-        print("The houses in mored_path do not match the houses in the metadata.")
-        print("Houses in mored_path:\t", list(premises_data_location.keys()))
-        print("Houses in metadata:\t", list(data_location.keys()))
-        print("The conversion has not been done.")
-        exit()
-    print(f"The houses found are: {list(premises_data_location.keys())}")
-
-    for house_number, one_house_data_location in data_location.items():
-        print(f"Converting house {house_number} ...")
-        for elec_numer, csv_path in one_house_data_location.items():
-            print(f"Converting elec {elec_numer} from {csv_path} ...")
-            df = _read_meter_csv(
-                Path(mored_path, csv_path), sort_index, drop_duplicates
-            )
-            key = Key(building=house_number, meter=elec_numer)
-            store.put(str(key), df)
 
 if __name__ == "__main__":
-    convert_mored("data", "mored.h5")
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("input_path")
+    parser.add_argument("output_path")
+    parser.add_argument("--format", choices=("HDF",), default="HDF")
+    parser.add_argument("--source-timezone", default="UTC")
+    args = parser.parse_args()
+    convert_mored(
+        args.input_path,
+        args.output_path,
+        args.format,
+        source_timezone=args.source_timezone,
+    )

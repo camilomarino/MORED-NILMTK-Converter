@@ -1,0 +1,18 @@
+name: Converter tests
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.11.28'
+      - run: uv venv --python 3.11
+      - run: uv pip install -r requirements-test.txt
+      - run: .venv/bin/python -m pytest -q

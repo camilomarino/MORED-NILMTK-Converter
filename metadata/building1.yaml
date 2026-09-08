@@ -1,12 +1,12 @@
-instance: 1   
-original_name: premises_1  
+instance: 1
+original_name: premises_1
 elec_meters:
   1:
     site_meter: true
-    device_model: emonPi 
+    device_model: emonPi
     data_location: Premises_1/Mains.csv
   2:
-    submeter_of: 1 
+    submeter_of: 1
     device_model: emonPi
     data_location: Premises_1/Blender.csv
   3:
@@ -14,7 +14,7 @@ elec_meters:
     device_model: emonPi
     data_location: Premises_1/Laptop_ASUS.csv
   4:
-    submeter_of: 1 
+    submeter_of: 1
     device_model: emonPi
     data_location: Premises_1/Laptop_MSI.csv
   5:
@@ -22,7 +22,7 @@ elec_meters:
     device_model: emonPi
     data_location: Premises_1/TV_monitor.csv
   6:
-    submeter_of: 1 
+    submeter_of: 1
     device_model: emonPi
     data_location: Premises_1/Panini_grill.csv
   7:
@@ -49,6 +49,6 @@ appliances:
     - {type: hair dryer, instance: 1, meters: [9]}
 
 n_occupants: 2
-description_of_occupants: 2 male adults pursuing a PhD and a Master's degree. 
+description_of_occupants: 2 male adults pursuing a PhD and a Master's degree.
 ownership: rented
-building_type: flat 
+building_type: flat

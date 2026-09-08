@@ -5,15 +5,15 @@ creators:
 - Bonilla-Licea, Daniel
 - Essayeh, Chaimaa
 - Ghogho, Mounir
-- Kobbane, Abdellatif 
+- Kobbane, Abdellatif
 # Mariño, Camilo (convert creator)
 publication_date: 2020
 institution: International University of Rabat (UIR) and ENSIAS, Mohammed V University in Rabat
-contact: mounir.ghogho@uir.ac.ma   
+contact: mounir.ghogho@uir.ac.ma
 description: Several weeks of power data from different Moroccan households.
 subject: Disaggregated power demand from domestic buildings.
 number_of_buildings: 10
-timezone: GMT+01:00
+timezone: Africa/Casablanca
 geo_location:
   locality: Rabat, Sala Al-Jadida, and Tetuàn    # City
   country: MA   # standard two-letter country code defined by ISO 3166-1 alpha-2

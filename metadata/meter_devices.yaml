@@ -1,6 +1,6 @@
 emonPi:
   model: emonPi
-  manufacturer: OpenEnergyMonitor 
+  manufacturer: OpenEnergyMonitor
   manufacturer_url: https://openenergymonitor.org/
   description: >
     An all in one two circuit energy monitor and base-station which collects
@@ -9,10 +9,10 @@ emonPi:
   sample_period: 5   # the interval between samples. In seconds.
   max_sample_period: 5   # Max allowable interval between samples. Seconds.
   measurements:
-  - physical_quantity: voltage   
+  - physical_quantity: voltage
     upper_limit: 5000
     lower_limit: 0
-  - physical_quantity: power   
+  - physical_quantity: power
     type: active   #(real power)
     upper_limit: 5000
     lower_limit: 0
