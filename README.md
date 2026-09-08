@@ -121,5 +121,15 @@ potentially duplicated source data when choosing evaluation appliances.
 Dataset reference: Ahajjam et al. (2020),
 [MORED: A Moroccan Buildings' Electricity Consumption Dataset](https://doi.org/10.3390/en13246737).
 Converter author: Camilo Mariño. Downloaded data remain subject to the dataset
-publisher's terms. This repository does not currently declare a separate license
-for converter code; confirm contribution licensing before submitting upstream.
+publisher's terms.
+
+## Code license
+
+Copyright 2026 Camilo Mariño. The converter code, tests, and original
+documentation are licensed under [Apache License 2.0](LICENSE), matching NILMTK.
+This permits use, modification, and redistribution, including commercial use,
+subject to the license terms.
+
+This license grant does not cover third-party datasets or metadata adapted from
+the dataset authors. Their original terms and attribution remain applicable;
+conversion does not relicense those materials.
